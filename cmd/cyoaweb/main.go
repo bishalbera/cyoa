@@ -4,6 +4,8 @@ import (
 	"cyoa"
 	"flag"
 	"fmt"
+	"log"
+	"net/http"
 	"os"
 )
 
@@ -12,6 +14,8 @@ func main() {
 }
 
 func parsingJson() {
+
+	port := flag.Int("porn", 3000, "the port to start the CYOA web app on")
 
 	// Create flags for our optional variables
 	filename := flag.String("file", "gopher.json", "the json file with CYOA story")
@@ -27,5 +31,8 @@ func parsingJson() {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println(story)
+	
+	h := cyoa.NewHandler(story)
+	fmt.Printf("Starting the server on the port: %d\n", *port)
+	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", *port), h))
 }
