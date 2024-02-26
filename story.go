@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"html/template"
 	"io"
+	"log"
 	"net/http"
+	"strings"
 )
 
 func init() {
@@ -115,6 +117,8 @@ type Option struct {
 
 type handler struct {
 	s Story
+  t *template.Template
+  pathFn func(r *http.Request) string
 }
 
 /*
@@ -132,14 +136,69 @@ func JsonStory(r io.Reader) (Story, error) {
 	return story, nil
 }
 
-func NewHandler(s Story) http.Handler {
-	return handler{s}
+/*
+HandlerOptions are used with the NewHandler function to
+configure the http.Handler returned
+*/
+type HandlerOption func (h *handler)  
+
+/*
+WithTemplate is an option to provide a custom template to 
+be used when rendeing stories.
+*/
+func WithTemplate(t *template.Template) HandlerOption {
+  return func(h *handler) {
+    h.t = t
+  }
+}
+
+/*
+WithPathFunc is an option to provide a custom function for 
+processing the story chapter from the incoming request.
+*/
+func WithPathFunc(fn func(r *http.Request) string) HandlerOption {
+  return func (h *handler)  {
+    h.pathFn = fn
+  }
+}
+
+func defaultPathFn( r *http.Request) string {
+  path := strings.TrimSpace(r.URL.Path)
+  if path == "" || path == "/" {
+    path = "/intro"
+  }
+  return path[1:]
+}
+
+/*
+NewHandler will construct an http.Handler what will render
+the story provided. The default handler will use the full path
+(minus the /prefix) as the chapter name, defaulting to "intro" if the 
+path is empty. The default template creates option links that follow 
+this pattern.
+*/
+func NewHandler(s Story, opts ...HandlerOption) http.Handler {
+	
+  h:= handler{s, tpl, defaultPathFn}
+  
+  for _, opt := range opts{
+    opt(&h)
+  }
+  return h
+
 }
 
 func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	err := tpl.Execute(w, h.s["intro"])
+	path := h.pathFn(r)
 
-	if err!= nil {
-		panic(err)
-	}
+  if chapter, ok := h.s[path]; ok {
+    err := h.t.Execute(w, chapter)
+    if err != nil {
+      log.Printf("%v", err)
+      http.Error(w, "Something went wrong", http.StatusInternalServerError)
+
+    }
+    return
+  }
+  http.Error(w, "Chapter not found", http.StatusNotFound)
 }
